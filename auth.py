@@ -1,10 +1,11 @@
 """JWT authentication utilities."""
+from __future__ import annotations
 import hashlib
 import hmac
 import json
 import os
 import time
-from functools import wraps
+from typing import Optional
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 
 from fastapi import Request, HTTPException
@@ -34,7 +35,7 @@ def create_token(user_id: int, username: str) -> str:
     return f"{header}.{payload}.{_b64encode(signature)}"
 
 
-def verify_token(token: str) -> dict | None:
+def verify_token(token: str) -> Optional[dict]:
     try:
         parts = token.split(".")
         if len(parts) != 3:
