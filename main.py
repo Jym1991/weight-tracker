@@ -344,4 +344,6 @@ def startup():
     init_db()
 
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+import os
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
