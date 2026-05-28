@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>减肥体重管理系统</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; }
+
+/* ===== Auth Page ===== */
+.auth-container { max-width: 400px; margin: 80px auto 0; padding: 16px; }
+.auth-card { background: #fff; border-radius: 16px; padding: 32px 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); text-align: center; }
+.auth-card h1 { font-size: 22px; margin-bottom: 4px; }
+.auth-card .subtitle { font-size: 13px; color: #999; margin-bottom: 24px; }
+.auth-card .form-group { text-align: left; margin-bottom: 16px; }
+.auth-card label { display: block; font-size: 13px; color: #666; margin-bottom: 6px; }
+.auth-card input { width: 100%; padding: 10px 14px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 15px; outline: none; transition: border-color 0.2s; }
+.auth-card input:focus { border-color: #667eea; }
+.auth-card .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 8px; }
+.auth-card .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+.auth-card .btn-primary:hover { opacity: 0.9; }
+.auth-card .toggle-link { margin-top: 16px; font-size: 13px; color: #667eea; cursor: pointer; }
+.auth-card .error-msg { color: #f5222d; font-size: 13px; margin-top: 8px; min-height: 20px; }
+
+/* ===== Main App ===== */
+#app { display: none; }
+.header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.header h1 { font-size: 20px; font-weight: 600; }
+.header .header-right { display: flex; align-items: center; gap: 10px; }
+.header .user-tag { font-size: 13px; opacity: 0.9; }
+.header .btn-logout { padding: 5px 14px; border: 1px solid rgba(255,255,255,0.5); border-radius: 16px; background: transparent; color: #fff; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+.header .btn-logout:hover { background: rgba(255,255,255,0.15); }
+.container { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+/* Unit toggle */
+.unit-toggle { display: inline-flex; background: rgba(255,255,255,0.2); border-radius: 20px; overflow: hidden; }
+.unit-toggle button { padding: 4px 16px; border: none; background: transparent; color: rgba(255,255,255,0.8); cursor: pointer; font-size: 13px; transition: all 0.2s; }
+.unit-toggle button.active { background: #fff; color: #667eea; font-weight: 600; border-radius: 20px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); text-align: center; transition: transform 0.2s; }
+.card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.card .label { font-size: 12px; color: #999; margin-bottom: 6px; }
+.card .value { font-size: 26px; font-weight: 700; color: #333; }
+.card .value.green { color: #52c41a; }
+.card .value.orange { color: #fa8c16; }
+.card .value.blue { color: #1890ff; }
+.card .value.red { color: #f5222d; }
+.card .value.teal { color: #13c2c2; }
+.card .sub { font-size: 12px; color: #999; margin-top: 2px; }
+
+.chart-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 16px; }
+.chart-box h3 { font-size: 15px; margin-bottom: 12px; color: #555; }
+
+.tabs { display: flex; gap: 0; margin-bottom: 16px; border-radius: 10px; overflow: hidden; }
+.tab-btn { flex: 1; padding: 10px; border: none; background: #e8e8e8; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+.tab-btn.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; font-weight: 600; }
+
+.form-box { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 16px; display: none; }
+.form-box.visible { display: block; }
+.form-box h3 { font-size: 15px; margin-bottom: 12px; color: #555; }
+.form-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 12px; color: #888; }
+.form-group input, .form-group select { padding: 8px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; outline: none; transition: border-color 0.2s; }
+.form-group input:focus, .form-group select:focus { border-color: #667eea; }
+.input-hint { font-size: 11px; color: #bbb; margin-top: 2px; }
+.btn { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+.btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-del { background: none; color: #ff4d4f; padding: 4px 8px; font-size: 12px; border: 1px solid #ff4d4f; border-radius: 4px; cursor: pointer; }
+.btn-del:hover { background: #fff1f0; }
+
+.goal-form { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 16px; }
+
+.history-box { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.history-box h3 { font-size: 15px; margin-bottom: 12px; color: #555; }
+.history-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+.history-item:last-child { border-bottom: none; }
+.history-item .info { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+.tag-breakfast { background: #fff7e6; color: #fa8c16; }
+.tag-lunch { background: #fff1f0; color: #f5222d; }
+.tag-dinner { background: #f6ffed; color: #52c41a; }
+.tag-snack { background: #f0f5ff; color: #2f54eb; }
+.tag-exercise { background: #e6fffb; color: #13c2c2; }
+.tag-weight { background: #f9f0ff; color: #722ed1; }
+.empty-state { text-align: center; padding: 30px; color: #bbb; font-size: 13px; }
+
+@media (max-width: 600px) {
+  .form-row { flex-direction: column; }
+  .form-group { width: 100%; }
+  .form-group input, .form-group select { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== Auth Page ==================== -->
+<div id="authPage">
+  <div class="auth-container">
+    <div class="auth-card">
+      <h1>减肥体重管理系统</h1>
+      <p class="subtitle" id="authSubtitle">登录你的账号</p>
+      <div class="form-group"><label>用户名</label><input type="text" id="authUsername" placeholder="输入用户名" autocomplete="username"></div>
+      <div class="form-group"><label>密码</label><input type="password" id="authPassword" placeholder="输入密码" autocomplete="current-password"></div>
+      <div class="error-msg" id="authError"></div>
+      <button class="btn btn-primary" id="authBtn" onclick="handleAuth()">登 录</button>
+      <p class="toggle-link" id="authToggle" onclick="toggleAuthMode()">没有账号？去注册</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Main App ==================== -->
+<div id="app">
+<div class="header">
+  <div>
+    <h1>减肥体重管理系统</h1>
+    <p style="font-size:12px;opacity:0.8;">记录 · 追踪 · 达成目标</p>
+  </div>
+  <div class="header-right">
+    <div class="unit-toggle">
+      <button id="btnUnitJin" class="active" onclick="setDisplayUnit('jin')">斤</button>
+      <button id="btnUnitKg" onclick="setDisplayUnit('kg')">kg</button>
+    </div>
+    <span class="user-tag" id="userTag"></span>
+    <button class="btn-logout" onclick="logout()">退出</button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="cards">
+    <div class="card"><div class="label">当前体重</div><div class="value blue" id="dashWeight">--</div><div class="sub" id="dashWeightUnit">斤</div></div>
+    <div class="card"><div class="label">目标体重</div><div class="value green" id="dashTarget">--</div><div class="sub" id="dashTargetUnit">斤</div></div>
+    <div class="card"><div class="label">还需减重</div><div class="value orange" id="dashRemain">--</div><div class="sub" id="dashRemainUnit">斤</div></div>
+    <div class="card"><div class="label">BMI</div><div class="value" id="dashBMI">--</div><div class="sub" id="dashBMILabel"></div></div>
+    <div class="card"><div class="label">今日摄入</div><div class="value red" id="dashCalIn">0</div><div class="sub">kcal</div></div>
+    <div class="card"><div class="label">今日消耗</div><div class="value teal" id="dashCalOut">0</div><div class="sub">kcal</div></div>
+  </div>
+
+  <div class="chart-box">
+    <h3>体重趋势</h3>
+    <div style="position:relative; height:380px;"><canvas id="weightChart"></canvas></div>
+  </div>
+
+  <div class="goal-form" id="goalForm">
+    <h3>目标设定</h3>
+    <div class="form-row">
+      <div class="form-group"><label>目标体重</label><input type="text" id="goalWeight" placeholder="例: 130斤 或 65kg" autocomplete="off"><span class="input-hint">支持「130斤」或「65kg」</span></div>
+      <div class="form-group"><label>身高(cm)</label><input type="number" id="goalHeight" step="0.1" min="100" max="250" placeholder="例: 170"></div>
+      <div class="form-group"><label>开始日期</label><input type="date" id="goalStart"></div>
+      <div class="form-group"><label>结束日期</label><input type="date" id="goalEnd"></div>
+      <div class="form-group"><label>每日热量目标(kcal)</label><input type="number" id="goalDailyCal" step="50" min="500" max="5000" placeholder="可选"></div>
+      <button class="btn btn-primary" onclick="saveGoal()">保存目标</button>
+    </div>
+    <div id="goalStatus" style="margin-top:8px;font-size:13px;color:#888;"></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('weight')">体重</button>
+    <button class="tab-btn" onclick="switchTab('diet')">饮食</button>
+    <button class="tab-btn" onclick="switchTab('exercise')">运动</button>
+  </div>
+
+  <div class="form-box visible" id="formWeight">
+    <h3>记录体重</h3>
+    <div class="form-row">
+      <div class="form-group"><label>日期</label><input type="date" id="wDate"></div>
+      <div class="form-group"><label>体重</label><input type="text" id="wWeight" placeholder="例: 145斤 或 72.5kg" autocomplete="off"><span class="input-hint">支持「145斤」或「72.5kg」或直接输数字(默认斤)</span></div>
+      <div class="form-group"><label>备注</label><input type="text" id="wNote" placeholder="可选"></div>
+      <button class="btn btn-primary" onclick="addWeight()">添加</button>
+    </div>
+  </div>
+
+  <div class="form-box" id="formDiet">
+    <h3>记录饮食</h3>
+    <div class="form-row">
+      <div class="form-group"><label>日期</label><input type="date" id="dDate"></div>
+      <div class="form-group"><label>餐次</label><select id="dMealType"><option value="早餐">早餐</option><option value="午餐">午餐</option><option value="晚餐">晚餐</option><option value="加餐">加餐</option></select></div>
+      <div class="form-group"><label>食物名称</label><input type="text" id="dFood" placeholder="例: 鸡胸肉沙拉"></div>
+      <div class="form-group"><label>热量(kcal)</label><input type="number" id="dCal" step="1" min="0" placeholder="例: 350"></div>
+      <div class="form-group"><label>备注</label><input type="text" id="dNote" placeholder="可选"></div>
+      <button class="btn btn-primary" onclick="addDiet()">添加</button>
+    </div>
+  </div>
+
+  <div class="form-box" id="formExercise">
+    <h3>记录运动</h3>
+    <div class="form-row">
+      <div class="form-group"><label>日期</label><input type="date" id="eDate"></div>
+      <div class="form-group"><label>运动项目</label><input type="text" id="eName" placeholder="例: 跑步"></div>
+      <div class="form-group"><label>时长(分钟)</label><input type="number" id="eDuration" step="1" min="1" placeholder="例: 30"></div>
+      <div class="form-group"><label>消耗(kcal)</label><input type="number" id="eCal" step="1" min="0" placeholder="例: 250"></div>
+      <div class="form-group"><label>备注</label><input type="text" id="eNote" placeholder="可选"></div>
+      <button class="btn btn-primary" onclick="addExercise()">添加</button>
+    </div>
+  </div>
+
+  <div class="history-box" id="historyBox">
+    <h3>历史记录</h3>
+    <div id="historyList"><div class="empty-state">暂无记录</div></div>
+  </div>
+</div>
+</div>
+
+<script>
+// ==================== Auth ====================
+let authToken = localStorage.getItem('wt_token');
+let authUsername = localStorage.getItem('wt_username');
+let authMode = 'login'; // 'login' or 'register'
+
+function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
+  if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(options.body);
+  }
+  return fetch(path, { ...options, headers }).then(r => {
+    if (r.status === 401) { logout(); throw new Error('unauthorized'); }
+    return r;
+  });
+}
+
+function toggleAuthMode() {
+  authMode = authMode === 'login' ? 'register' : 'login';
+  document.getElementById('authSubtitle').textContent = authMode === 'login' ? '登录你的账号' : '注册新账号';
+  document.getElementById('authBtn').textContent = authMode === 'login' ? '登 录' : '注 册';
+  document.getElementById('authToggle').textContent = authMode === 'login' ? '没有账号？去注册' : '已有账号？去登录';
+  document.getElementById('authError').textContent = '';
+}
+
+async function handleAuth() {
+  const username = document.getElementById('authUsername').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const errEl = document.getElementById('authError');
+
+  if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
+  if (authMode === 'register' && password.length < 4) { errEl.textContent = '密码至少4位'; return; }
+
+  const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.detail || '操作失败'; return; }
+
+    authToken = data.token;
+    authUsername = data.username;
+    localStorage.setItem('wt_token', authToken);
+    localStorage.setItem('wt_username', authUsername);
+    showApp();
+  } catch (e) {
+    errEl.textContent = '网络错误，请重试';
+  }
+}
+
+function logout() {
+  authToken = null;
+  authUsername = null;
+  localStorage.removeItem('wt_token');
+  localStorage.removeItem('wt_username');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('authPage').style.display = 'block';
+  document.getElementById('authPassword').value = '';
+  document.getElementById('authError').textContent = '';
+}
+
+// Handle Enter key on auth page
+document.getElementById('authPassword').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') handleAuth();
+});
+
+// ==================== Init ====================
+let currentTab = 'weight';
+let weightData = [];
+let chart = null;
+let displayUnit = 'jin';
+
+const today = new Date().toISOString().slice(0, 10);
+document.querySelectorAll('input[type="date"]').forEach(el => { if (!el.value) el.value = today; });
+
+function showApp() {
+  document.getElementById('authPage').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('userTag').textContent = authUsername;
+  refreshAll();
+}
+
+if (authToken) {
+  showApp();
+}
+
+// ==================== Unit ====================
+function parseWeightInput(raw) {
+  const s = raw.trim();
+  if (!s) return NaN;
+  const jinMatch = s.match(/^([\d.]+)\s*斤$/);
+  if (jinMatch) return parseFloat(jinMatch[1]) / 2;
+  const kgMatch = s.match(/^([\d.]+)\s*kg$/i);
+  if (kgMatch) return parseFloat(kgMatch[1]);
+  const numMatch = s.match(/^([\d.]+)$/);
+  if (numMatch) return parseFloat(numMatch[1]) / 2; // default: 斤 → kg
+  return NaN;
+}
+
+function toDisplay(kg) {
+  if (kg == null) return '--';
+  return displayUnit === 'jin' ? (kg * 2).toFixed(1) : kg.toFixed(1);
+}
+
+function unitLabel() { return displayUnit === 'jin' ? '斤' : 'kg'; }
+
+function setDisplayUnit(unit) {
+  displayUnit = unit;
+  document.getElementById('btnUnitJin').classList.toggle('active', unit === 'jin');
+  document.getElementById('btnUnitKg').classList.toggle('active', unit === 'kg');
+  refreshAll();
+}
+
+// ==================== Tabs ====================
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('formWeight').classList.toggle('visible', tab === 'weight');
+  document.getElementById('formDiet').classList.toggle('visible', tab === 'diet');
+  document.getElementById('formExercise').classList.toggle('visible', tab === 'exercise');
+  loadHistory();
+}
+
+// ==================== Dashboard ====================
+async function loadDashboard() {
+  const res = await api('/api/goals/progress');
+  const data = await res.json();
+  const u = unitLabel();
+
+  if (data.has_goal) {
+    document.getElementById('dashWeight').textContent = data.current_weight_kg != null ? toDisplay(data.current_weight_kg) : '--';
+    document.getElementById('dashTarget').textContent = toDisplay(data.target_weight_kg);
+    if (data.remaining_kg != null) {
+      const rem = data.remaining_kg;
+      if (rem <= 0) {
+        document.getElementById('dashRemain').textContent = '已达成!';
+        document.getElementById('dashRemain').className = 'value green';
+      } else {
+        document.getElementById('dashRemain').textContent = toDisplay(rem);
+        document.getElementById('dashRemain').className = 'value orange';
+      }
+    } else {
+      document.getElementById('dashRemain').textContent = '--';
+      document.getElementById('dashRemain').className = 'value orange';
+    }
+    document.getElementById('dashBMI').textContent = data.bmi ?? '--';
+    if (data.bmi) {
+      let lbl = '';
+      if (data.bmi < 18.5) lbl = '偏瘦';
+      else if (data.bmi < 24) lbl = '正常';
+      else if (data.bmi < 28) lbl = '偏胖';
+      else lbl = '肥胖';
+      document.getElementById('dashBMILabel').textContent = lbl;
+    }
+    document.querySelectorAll('#dashWeightUnit, #dashTargetUnit, #dashRemainUnit').forEach(el => el.textContent = u);
+    document.getElementById('goalStatus').innerHTML =
+      `<span style="color:#52c41a;">当前目标: ${toDisplay(data.target_weight_kg)}${u} (${data.start_date} ~ ${data.end_date})</span>`;
+  }
+
+  const ov = await api(`/api/stats/overview?date=${today}`);
+  const ovData = await ov.json();
+  document.getElementById('dashCalIn').textContent = ovData.today_calories_in;
+  document.getElementById('dashCalOut').textContent = ovData.today_calories_out;
+}
+
+// ==================== Chart ====================
+function daysBetween(d1, d2) {
+  return Math.ceil((new Date(d2) - new Date(d1)) / (1000 * 60 * 60 * 24));
+}
+
+async function loadChart() {
+  const res = await api('/api/weight');
+  weightData = await res.json();
+
+  const canvas = document.getElementById('weightChart');
+  const ctx = canvas.getContext('2d');
+  if (chart) chart.destroy();
+
+  const sorted = [...weightData].sort((a, b) => a.date.localeCompare(b.date));
+  const convert = v => displayUnit === 'jin' ? v * 2 : v;
+  const u = unitLabel();
+
+  const gRes = await api('/api/goals/progress');
+  const gData = await gRes.json();
+
+  if (sorted.length === 0) {
+    ctx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillStyle = '#bbb';
+    ctx.textAlign = 'center';
+    ctx.fillText('暂无体重数据，录入后自动生成趋势图', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+
+  const weightDates = sorted.map(r => r.date);
+  const weightDisplay = sorted.map(r => convert(r.weight_kg));
+
+  let trajData = [];
+  let targetDisplay = null;
+
+  if (gData.has_goal) {
+    targetDisplay = convert(gData.target_weight_kg);
+    const startDate = gData.start_date;
+    const endDate = gData.end_date;
+    const trajStartDate = weightDates[0] < startDate ? weightDates[0] : startDate;
+    const trajStartWeight = convert(sorted[0].weight_kg);
+
+    const totalDays = Math.max(1, daysBetween(trajStartDate, endDate));
+    const lossPerDay = (targetDisplay - trajStartWeight) / totalDays;
+
+    trajData = weightDates.map(date => {
+      const d = Math.max(0, daysBetween(trajStartDate, date));
+      const ideal = trajStartWeight + lossPerDay * Math.min(d, totalDays);
+      return parseFloat(ideal.toFixed(1));
+    });
+  }
+
+  const pointColors = weightDisplay.map((v, i) => {
+    if (i === 0) return '#667eea';
+    return v < weightDisplay[i - 1] ? '#52c41a' : v > weightDisplay[i - 1] ? '#f5222d' : '#667eea';
+  });
+
+  const datasets = [];
+  const gradH = Math.max(canvas.clientHeight || 380, 380);
+
+  const grad = ctx.createLinearGradient(0, 0, 0, gradH);
+  grad.addColorStop(0, 'rgba(102, 126, 234, 0.28)');
+  grad.addColorStop(0.6, 'rgba(102, 126, 234, 0.06)');
+  grad.addColorStop(1, 'rgba(102, 126, 234, 0.00)');
+
+  datasets.push({
+    label: '实际体重',
+    data: weightDisplay,
+    borderColor: '#667eea',
+    backgroundColor: grad,
+    fill: true,
+    tension: 0.4,
+    borderWidth: 3,
+    pointRadius: 6,
+    pointHoverRadius: 9,
+    pointBackgroundColor: pointColors,
+    pointBorderColor: '#fff',
+    pointBorderWidth: 2.5,
+    pointHoverBorderColor: '#764ba2',
+    pointHoverBorderWidth: 3,
+    order: 0,
+  });
+
+  if (trajData.length > 0) {
+    const trajGrad = ctx.createLinearGradient(0, 0, 0, gradH);
+    trajGrad.addColorStop(0, 'rgba(82, 196, 26, 0.12)');
+    trajGrad.addColorStop(1, 'rgba(82, 196, 26, 0.00)');
+
+    datasets.push({
+      label: `理想轨迹 → ${targetDisplay.toFixed(1)}${u}`,
+      data: trajData,
+      borderColor: '#389e0d',
+      backgroundColor: trajGrad,
+      fill: true,
+      tension: 0,
+      borderWidth: 2,
+      borderDash: [8, 4],
+      pointRadius: 0,
+      pointHoverRadius: 6,
+      pointHoverBackgroundColor: '#52c41a',
+      order: 1,
+    });
+  }
+
+  if (targetDisplay != null) {
+    datasets.push({
+      label: `目标 ${targetDisplay.toFixed(1)}${u}`,
+      data: Array(weightDates.length).fill(targetDisplay),
+      borderColor: 'rgba(250, 140, 22, 0.55)',
+      borderDash: [5, 5],
+      borderWidth: 2,
+      fill: false,
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      order: 2,
+    });
+  }
+
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: weightDates, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { top: 10, right: 16, bottom: 0, left: 8 } },
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            usePointStyle: true,
+            boxWidth: 10,
+            padding: 20,
+            font: { size: 12, family: "-apple-system, BlinkMacSystemFont, sans-serif" },
+          },
+        },
+        tooltip: {
+          backgroundColor: 'rgba(30, 30, 45, 0.94)',
+          titleFont: { size: 13, weight: '600' },
+          bodyFont: { size: 13 },
+          padding: 14,
+          cornerRadius: 10,
+          displayColors: true,
+          boxPadding: 4,
+          callbacks: {
+            title: function(items) { return items[0].label; },
+            label: function(ctx) {
+              return ' ' + ctx.dataset.label + ': ' + parseFloat(ctx.raw).toFixed(1) + ' ' + u;
+            }
+          }
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: {
+            font: { size: 12 },
+            maxTicksLimit: 8,
+            maxRotation: 0,
+            autoSkip: true,
+            autoSkipPadding: 20,
+            callback: function(val) { return this.getLabelForValue(val).slice(5); }
+          },
+        },
+        y: {
+          title: { display: true, text: u, font: { size: 13, weight: '600' }, padding: { bottom: 8 } },
+          grid: { color: 'rgba(0,0,0,0.06)', drawBorder: false },
+          ticks: { font: { size: 12 }, maxTicksLimit: 6, padding: 8, callback: v => v.toFixed(1) },
+          afterFit: function(scale) { scale.paddingRight = 12; }
+        }
+      }
+    }
+  });
+}
+
+// ==================== CRUD ====================
+async function addWeight() {
+  const date = document.getElementById('wDate').value;
+  const raw = document.getElementById('wWeight').value;
+  const weight_kg = parseWeightInput(raw);
+  const note = document.getElementById('wNote').value;
+
+  if (!date || isNaN(weight_kg)) return alert('请填写日期和体重（支持：145斤 / 72.5kg / 72.5）');
+
+  await api('/api/weight', {
+    method: 'POST',
+    body: { date, weight_kg: Math.round(weight_kg * 100) / 100, note },
+  });
+  document.getElementById('wWeight').value = '';
+  document.getElementById('wNote').value = '';
+  refreshAll();
+}
+
+async function addDiet() {
+  const date = document.getElementById('dDate').value;
+  const meal_type = document.getElementById('dMealType').value;
+  const food_name = document.getElementById('dFood').value;
+  const calories_kcal = parseFloat(document.getElementById('dCal').value);
+  const note = document.getElementById('dNote').value;
+  if (!date || !food_name || isNaN(calories_kcal)) return alert('请填写日期、食物和热量');
+
+  await api('/api/diet', {
+    method: 'POST',
+    body: { date, meal_type, food_name, calories_kcal, note },
+  });
+  document.getElementById('dFood').value = '';
+  document.getElementById('dCal').value = '';
+  document.getElementById('dNote').value = '';
+  refreshAll();
+}
+
+async function addExercise() {
+  const date = document.getElementById('eDate').value;
+  const exercise_name = document.getElementById('eName').value;
+  const duration_min = parseFloat(document.getElementById('eDuration').value);
+  const calories_burned = parseFloat(document.getElementById('eCal').value);
+  const note = document.getElementById('eNote').value;
+  if (!date || !exercise_name || isNaN(duration_min) || isNaN(calories_burned)) return alert('请填写完整信息');
+
+  await api('/api/exercise', {
+    method: 'POST',
+    body: { date, exercise_name, duration_min, calories_burned, note },
+  });
+  document.getElementById('eName').value = '';
+  document.getElementById('eDuration').value = '';
+  document.getElementById('eCal').value = '';
+  document.getElementById('eNote').value = '';
+  refreshAll();
+}
+
+async function deleteItem(type, id) {
+  if (!confirm('确认删除？')) return;
+  await api(`/api/${type}/${id}`, { method: 'DELETE' });
+  refreshAll();
+}
+
+// ==================== Goal ====================
+async function saveGoal() {
+  const raw = document.getElementById('goalWeight').value;
+  const target_weight_kg = parseWeightInput(raw);
+  const height_cm = parseFloat(document.getElementById('goalHeight').value);
+  const start_date = document.getElementById('goalStart').value;
+  const end_date = document.getElementById('goalEnd').value;
+  const daily_calorie_target = parseFloat(document.getElementById('goalDailyCal').value) || null;
+
+  if (isNaN(target_weight_kg) || !start_date || !end_date) return alert('请填写目标体重和日期范围');
+
+  await api('/api/goals', {
+    method: 'POST',
+    body: { target_weight_kg: Math.round(target_weight_kg * 100) / 100, height_cm, start_date, end_date, daily_calorie_target },
+  });
+  document.getElementById('goalWeight').value = '';
+  document.getElementById('goalHeight').value = '';
+  document.getElementById('goalStart').value = '';
+  document.getElementById('goalEnd').value = '';
+  document.getElementById('goalDailyCal').value = '';
+  refreshAll();
+}
+
+// ==================== History ====================
+async function loadHistory() {
+  const el = document.getElementById('historyList');
+  const u = unitLabel();
+
+  if (currentTab === 'weight') {
+    const res = await api('/api/weight');
+    const rows = await res.json();
+    if (rows.length === 0) { el.innerHTML = '<div class="empty-state">暂无体重记录</div>'; return; }
+    el.innerHTML = rows.map(r => `
+      <div class="history-item">
+        <div class="info"><span class="tag tag-weight">体重</span> ${r.date} <strong>${toDisplay(r.weight_kg)} ${u}</strong> ${r.note ? '— ' + r.note : ''}</div>
+        <button class="btn-del" onclick="deleteItem('weight', ${r.id})">删除</button>
+      </div>`).join('');
+
+  } else if (currentTab === 'diet') {
+    const res = await api('/api/diet');
+    const rows = await res.json();
+    if (rows.length === 0) { el.innerHTML = '<div class="empty-state">暂无饮食记录</div>'; return; }
+    const mealTag = { '早餐': 'tag-breakfast', '午餐': 'tag-lunch', '晚餐': 'tag-dinner', '加餐': 'tag-snack' };
+    el.innerHTML = rows.map(r => `
+      <div class="history-item">
+        <div class="info"><span class="tag ${mealTag[r.meal_type] || ''}">${r.meal_type}</span> ${r.date} <strong>${r.food_name}</strong> ${r.calories_kcal}kcal ${r.note ? '— ' + r.note : ''}</div>
+        <button class="btn-del" onclick="deleteItem('diet', ${r.id})">删除</button>
+      </div>`).join('');
+
+  } else if (currentTab === 'exercise') {
+    const res = await api('/api/exercise');
+    const rows = await res.json();
+    if (rows.length === 0) { el.innerHTML = '<div class="empty-state">暂无运动记录</div>'; return; }
+    el.innerHTML = rows.map(r => `
+      <div class="history-item">
+        <div class="info"><span class="tag tag-exercise">运动</span> ${r.date} <strong>${r.exercise_name}</strong> ${r.duration_min}分钟 ${r.calories_burned}kcal ${r.note ? '— ' + r.note : ''}</div>
+        <button class="btn-del" onclick="deleteItem('exercise', ${r.id})">删除</button>
+      </div>`).join('');
+  }
+}
+
+// ==================== Refresh ====================
+function refreshAll() {
+  loadDashboard();
+  loadChart();
+  loadHistory();
+}
+</script>
+</body>
+</html>

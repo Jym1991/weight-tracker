@@ -1,0 +1,7 @@
+venv/
+weight_tracker.db
+weight_tracker.db-shm
+weight_tracker.db-wal
+__pycache__/
+*.pyc
+.DS_Store
