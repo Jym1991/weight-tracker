@@ -69,6 +69,23 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_diet_user ON diet_records(user_id, date);
         CREATE INDEX IF NOT EXISTS idx_exercise_user ON exercise_records(user_id, date);
         CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id);
+
+        CREATE TABLE IF NOT EXISTS pk_groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL DEFAULT '减肥PK',
+            creator_id INTEGER NOT NULL REFERENCES users(id),
+            created_at TEXT DEFAULT (datetime('now', 'localtime'))
+        );
+
+        CREATE TABLE IF NOT EXISTS pk_members (
+            group_id INTEGER NOT NULL REFERENCES pk_groups(id),
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            joined_at TEXT DEFAULT (datetime('now', 'localtime')),
+            PRIMARY KEY (group_id, user_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pk_members_group ON pk_members(group_id);
+        CREATE INDEX IF NOT EXISTS idx_pk_members_user ON pk_members(user_id);
     """)
     conn.commit()
     conn.close()
