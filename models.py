@@ -1,5 +1,6 @@
+from __future__ import annotations
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 
 
 # ---- Auth ----
@@ -76,16 +77,16 @@ class GoalOut(Goal):
 # ---- PK ----
 class PKCreate(BaseModel):
     name: str = "减肥PK"
-    member_usernames: list[str] = Field(min_length=1, max_length=3)
+    member_usernames: List[str] = Field(min_length=1, max_length=3)
 
 
 class PKMemberInfo(BaseModel):
     user_id: int
     username: str
-    target_weight_kg: float | None = None
-    current_weight_kg: float | None = None
-    start_weight_kg: float | None = None
-    progress_pct: float = 0  # 0-100, how close to goal
+    target_weight_kg: Optional[float] = None
+    current_weight_kg: Optional[float] = None
+    start_weight_kg: Optional[float] = None
+    progress_pct: float = 0
     total_lost_kg: float = 0
 
 
@@ -94,4 +95,4 @@ class PKGroupOut(BaseModel):
     name: str
     creator_id: int
     created_at: str
-    members: list[PKMemberInfo]
+    members: List[PKMemberInfo]
