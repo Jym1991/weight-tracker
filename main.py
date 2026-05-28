@@ -7,6 +7,7 @@ from models import (
     DietRecord, DietRecordOut,
     ExerciseRecord, ExerciseRecordOut,
     Goal, GoalOut,
+    PKCreate, PKGroupOut, PKMemberInfo,
 )
 from auth import create_token, hash_password, check_password, get_current_user
 
@@ -335,6 +336,147 @@ def overview(request: Request, date: str = None):
             result["remaining_kg"] = round(latest_weight["weight_kg"] - goal["target_weight_kg"], 1)
 
     return result
+
+
+# ==================== PK (朋友PK) ====================
+
+@app.get("/api/users/search")
+def search_users(request: Request, q: str = ""):
+    get_current_user(request)
+    if len(q) < 1:
+        return []
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, username FROM users WHERE username LIKE ? LIMIT 10",
+        (f"%{q}%",),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/pk/create")
+def pk_create(request: Request, body: PKCreate):
+    user = get_current_user(request)
+    db = get_db()
+
+    # Resolve usernames to user_ids
+    member_ids = [user["user_id"]]
+    for uname in body.member_usernames:
+        row = db.execute("SELECT id FROM users WHERE username = ?", (uname,)).fetchone()
+        if not row:
+            raise HTTPException(400, f"用户 '{uname}' 不存在")
+        if row["id"] == user["user_id"]:
+            raise HTTPException(400, "不能和自己PK")
+        if row["id"] in member_ids:
+            raise HTTPException(400, "不能重复添加同一用户")
+        member_ids.append(row["id"])
+
+    cur = db.execute("INSERT INTO pk_groups (name, creator_id) VALUES (?, ?)", (body.name, user["user_id"]))
+    gid = cur.lastrowid
+    for mid in member_ids:
+        db.execute("INSERT INTO pk_members (group_id, user_id) VALUES (?, ?)", (gid, mid))
+    db.commit()
+    return {"ok": True, "group_id": gid}
+
+
+def _get_member_progress(db, user_id: int) -> PKMemberInfo:
+    """Compute PK progress for a single user."""
+    urow = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+    goal = db.execute(
+        "SELECT * FROM goals WHERE user_id=? AND is_active=1 ORDER BY created_at DESC LIMIT 1",
+        (user_id,),
+    ).fetchone()
+    latest = db.execute(
+        "SELECT weight_kg FROM weight_records WHERE user_id=? ORDER BY date DESC LIMIT 1",
+        (user_id,),
+    ).fetchone()
+    earliest = db.execute(
+        "SELECT weight_kg FROM weight_records WHERE user_id=? ORDER BY date ASC LIMIT 1",
+        (user_id,),
+    ).fetchone()
+
+    info = PKMemberInfo(
+        user_id=user_id,
+        username=urow["username"] if urow else "?",
+        target_weight_kg=goal["target_weight_kg"] if goal else None,
+        current_weight_kg=latest["weight_kg"] if latest else None,
+        start_weight_kg=earliest["weight_kg"] if earliest else None,
+    )
+
+    if latest and earliest and goal:
+        total_to_lose = earliest["weight_kg"] - goal["target_weight_kg"]
+        lost_so_far = earliest["weight_kg"] - latest["weight_kg"]
+        info.total_lost_kg = round(lost_so_far, 1)
+        if total_to_lose > 0:
+            pct = min(100, max(0, round(lost_so_far / total_to_lose * 100, 1)))
+            info.progress_pct = pct
+        elif lost_so_far >= total_to_lose:
+            info.progress_pct = 100
+    elif latest and earliest:
+        info.total_lost_kg = round(earliest["weight_kg"] - latest["weight_kg"], 1)
+
+    return info
+
+
+@app.get("/api/pk/groups")
+def pk_list_groups(request: Request):
+    user = get_current_user(request)
+    db = get_db()
+    rows = db.execute(
+        "SELECT g.id, g.name, g.creator_id, g.created_at FROM pk_groups g "
+        "JOIN pk_members m ON g.id = m.group_id WHERE m.user_id = ? ORDER BY g.created_at DESC",
+        (user["user_id"],),
+    ).fetchall()
+
+    result = []
+    for g in rows:
+        members = db.execute(
+            "SELECT user_id FROM pk_members WHERE group_id = ?", (g["id"],)
+        ).fetchall()
+        member_infos = [_get_member_progress(db, m["user_id"]) for m in members]
+        result.append({
+            "id": g["id"],
+            "name": g["name"],
+            "creator_id": g["creator_id"],
+            "created_at": g["created_at"],
+            "members": [m.model_dump() for m in member_infos],
+        })
+    return result
+
+
+@app.delete("/api/pk/{group_id}")
+def pk_leave(request: Request, group_id: int):
+    user = get_current_user(request)
+    db = get_db()
+    db.execute("DELETE FROM pk_members WHERE group_id=? AND user_id=?", (group_id, user["user_id"]))
+    # Remove group if empty
+    remaining = db.execute("SELECT COUNT(*) as c FROM pk_members WHERE group_id=?", (group_id,)).fetchone()
+    if remaining["c"] == 0:
+        db.execute("DELETE FROM pk_groups WHERE id=?", (group_id,))
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/pk/{group_id}")
+def pk_detail(request: Request, group_id: int):
+    user = get_current_user(request)
+    db = get_db()
+    # Verify membership
+    mem = db.execute(
+        "SELECT 1 FROM pk_members WHERE group_id=? AND user_id=?", (group_id, user["user_id"])
+    ).fetchone()
+    if not mem:
+        raise HTTPException(403, "你不在此PK组中")
+
+    g = db.execute("SELECT * FROM pk_groups WHERE id=?", (group_id,)).fetchone()
+    members = db.execute("SELECT user_id FROM pk_members WHERE group_id=?", (group_id,)).fetchall()
+    member_infos = [_get_member_progress(db, m["user_id"]) for m in members]
+    return {
+        "id": g["id"],
+        "name": g["name"],
+        "creator_id": g["creator_id"],
+        "created_at": g["created_at"],
+        "members": [m.model_dump() for m in member_infos],
+    }
 
 
 # ==================== Startup ====================
