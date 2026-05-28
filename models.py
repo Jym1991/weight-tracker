@@ -71,3 +71,27 @@ class GoalOut(Goal):
     id: int
     is_active: int
     created_at: str
+
+
+# ---- PK ----
+class PKCreate(BaseModel):
+    name: str = "减肥PK"
+    member_usernames: list[str] = Field(min_length=1, max_length=3)
+
+
+class PKMemberInfo(BaseModel):
+    user_id: int
+    username: str
+    target_weight_kg: float | None = None
+    current_weight_kg: float | None = None
+    start_weight_kg: float | None = None
+    progress_pct: float = 0  # 0-100, how close to goal
+    total_lost_kg: float = 0
+
+
+class PKGroupOut(BaseModel):
+    id: int
+    name: str
+    creator_id: int
+    created_at: str
+    members: list[PKMemberInfo]
