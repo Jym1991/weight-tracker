@@ -183,6 +183,9 @@ button { touch-action: manipulation; }
       <button type="button" id="btnUnitKg" onclick="setDisplayUnit('kg')">kg</button>
     </div>
     <span class="user-tag" id="userTag"></span>
+    <button type="button" class="btn-logout" onclick="downloadBackup()" style="margin-right:4px;">导出</button>
+    <button type="button" class="btn-logout" onclick="document.getElementById('bkfile').click()" style="margin-right:4px;">导入</button>
+    <input type="file" id="bkfile" accept=".json" style="display:none" onchange="uploadBackup(this)">
     <button type="button" class="btn-logout" onclick="logout()">退出</button>
   </div>
 </div>
@@ -885,6 +888,36 @@ document.addEventListener('click', function(e) {
     document.getElementById('pkSearchResults').classList.remove('show');
   }
 });
+
+// ==================== Backup ====================
+
+async function downloadBackup() {
+  const res = await api('/api/backup');
+  const data = await res.json();
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'weight-data-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+}
+
+function uploadBackup(input) {
+  if(!confirm('导入会覆盖当前数据，确定？')){input.value='';return;}
+  const file = input.files[0];
+  if(!file) return;
+  const r = new FileReader();
+  r.onload = async function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      const res = await api('/api/backup', {method:'POST', body: data});
+      const result = await res.json();
+      alert('导入完成: '+result.count+'条');
+      refreshAll();
+    } catch(err) { alert('格式错误: '+err.message); }
+  };
+  r.readAsText(file);
+  input.value = '';
+}
 
 // ==================== Refresh ====================
 function refreshAll() {
