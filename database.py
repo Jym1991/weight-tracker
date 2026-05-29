@@ -1,91 +1,98 @@
-import sqlite3
 import os
+import psycopg2
+import psycopg2.extras
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "weight_tracker.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL 未设置，请在环境变量中配置数据库连接")
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.cursor_factory = psycopg2.extras.RealDictCursor
     return conn
 
 
 def init_db():
     conn = get_db()
-    conn.executescript("""
+    cur = conn.cursor()
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
-            created_at TEXT DEFAULT (datetime('now', 'localtime'))
+            created_at TIMESTAMP DEFAULT NOW()
         );
 
         CREATE TABLE IF NOT EXISTS weight_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
-            date TEXT NOT NULL,
-            weight_kg REAL NOT NULL,
+            date DATE NOT NULL,
+            weight_kg DOUBLE PRECISION NOT NULL,
             note TEXT DEFAULT '',
-            created_at TEXT DEFAULT (datetime('now', 'localtime'))
+            created_at TIMESTAMP DEFAULT NOW()
         );
 
         CREATE TABLE IF NOT EXISTS diet_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
-            date TEXT NOT NULL,
+            date DATE NOT NULL,
             meal_type TEXT NOT NULL CHECK(meal_type IN ('早餐','午餐','晚餐','加餐')),
             food_name TEXT NOT NULL,
-            calories_kcal REAL NOT NULL,
+            calories_kcal DOUBLE PRECISION NOT NULL,
             note TEXT DEFAULT '',
-            created_at TEXT DEFAULT (datetime('now', 'localtime'))
+            created_at TIMESTAMP DEFAULT NOW()
         );
 
         CREATE TABLE IF NOT EXISTS exercise_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
-            date TEXT NOT NULL,
+            date DATE NOT NULL,
             exercise_name TEXT NOT NULL,
-            duration_min REAL NOT NULL,
-            calories_burned REAL NOT NULL,
+            duration_min DOUBLE PRECISION NOT NULL,
+            calories_burned DOUBLE PRECISION NOT NULL,
             note TEXT DEFAULT '',
-            created_at TEXT DEFAULT (datetime('now', 'localtime'))
+            created_at TIMESTAMP DEFAULT NOW()
         );
 
         CREATE TABLE IF NOT EXISTS goals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
-            target_weight_kg REAL NOT NULL,
-            start_date TEXT NOT NULL,
-            end_date TEXT NOT NULL,
-            daily_calorie_target REAL,
-            height_cm REAL DEFAULT 0,
+            target_weight_kg DOUBLE PRECISION NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            daily_calorie_target DOUBLE PRECISION,
+            height_cm DOUBLE PRECISION DEFAULT 0,
             is_active INTEGER DEFAULT 1,
-            created_at TEXT DEFAULT (datetime('now', 'localtime'))
+            created_at TIMESTAMP DEFAULT NOW()
         );
 
-        CREATE INDEX IF NOT EXISTS idx_weight_user ON weight_records(user_id, date);
-        CREATE INDEX IF NOT EXISTS idx_diet_user ON diet_records(user_id, date);
-        CREATE INDEX IF NOT EXISTS idx_exercise_user ON exercise_records(user_id, date);
-        CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id);
-
         CREATE TABLE IF NOT EXISTS pk_groups (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL DEFAULT '减肥PK',
             creator_id INTEGER NOT NULL REFERENCES users(id),
-            created_at TEXT DEFAULT (datetime('now', 'localtime'))
+            created_at TIMESTAMP DEFAULT NOW()
         );
 
         CREATE TABLE IF NOT EXISTS pk_members (
             group_id INTEGER NOT NULL REFERENCES pk_groups(id),
             user_id INTEGER NOT NULL REFERENCES users(id),
-            joined_at TEXT DEFAULT (datetime('now', 'localtime')),
+            joined_at TIMESTAMP DEFAULT NOW(),
             PRIMARY KEY (group_id, user_id)
         );
-
-        CREATE INDEX IF NOT EXISTS idx_pk_members_group ON pk_members(group_id);
-        CREATE INDEX IF NOT EXISTS idx_pk_members_user ON pk_members(user_id);
     """)
+    # Create indexes (safe to re-run)
+    for idx_sql in [
+        "CREATE INDEX IF NOT EXISTS idx_weight_user ON weight_records(user_id, date)",
+        "CREATE INDEX IF NOT EXISTS idx_diet_user ON diet_records(user_id, date)",
+        "CREATE INDEX IF NOT EXISTS idx_exercise_user ON exercise_records(user_id, date)",
+        "CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_pk_members_group ON pk_members(group_id)",
+        "CREATE INDEX IF NOT EXISTS idx_pk_members_user ON pk_members(user_id)",
+    ]:
+        try:
+            cur.execute(idx_sql)
+        except Exception:
+            pass  # index may already exist
     conn.commit()
     conn.close()
