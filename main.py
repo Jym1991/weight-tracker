@@ -385,8 +385,9 @@ def pk_detail(request: Request, group_id: int):
 # ==================== Backup ====================
 
 import json as _json
+import os as _os_backup
 
-BACKUP_FILE = __import__('os').path.join(__import__('os').path.dirname(__file__), "backup.json")
+BACKUP_FILE = _os_backup.path.join(_os_backup.path.dirname(__file__), "backup.json")
 
 
 @app.get("/api/backup/export")
@@ -469,9 +470,7 @@ def backup_save(request: Request):
 @app.on_event("startup")
 def startup():
     init_db()
-    # Auto-restore from backup file if DB is empty
-    import os as _os2
-    if _os2.path.exists(BACKUP_FILE):
+    if _os_backup.path.exists(BACKUP_FILE):
         try:
             with open(BACKUP_FILE, encoding="utf-8") as f:
                 backup = _json.load(f)
@@ -493,6 +492,5 @@ def startup():
             print(f"Backup restore failed: {e}")
 
 
-import os as _os
-STATIC_DIR = _os.path.join(_os.path.dirname(__file__), "static")
+STATIC_DIR = _os_backup.path.join(_os_backup.path.dirname(__file__), "static")
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
