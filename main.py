@@ -13,18 +13,34 @@ from auth import create_token, hash_password, check_password, get_current_user
 
 app = FastAPI(title="减肥体重管理系统")
 
+
+def _row_to_dict(row):
+    """Convert RealDictRow to plain dict with str dates."""
+    if row is None:
+        return None
+    d = dict(row)
+    for k, v in d.items():
+        if hasattr(v, 'isoformat'):
+            d[k] = v.isoformat()
+    return d
+
+
 # ==================== Auth ====================
 
 @app.post("/api/auth/register", response_model=TokenResponse)
 def register(body: UserRegister):
     db = get_db()
-    existing = db.execute("SELECT id FROM users WHERE username = ?", (body.username,)).fetchone()
-    if existing:
+    cur = db.cursor()
+    cur.execute("SELECT id FROM users WHERE username = %s", (body.username,))
+    if cur.fetchone():
         raise HTTPException(400, "用户名已存在")
     pw_hash = hash_password(body.password)
-    cur = db.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (body.username, pw_hash))
+    cur.execute(
+        "INSERT INTO users (username, password_hash) VALUES (%s, %s) RETURNING id",
+        (body.username, pw_hash),
+    )
+    user_id = cur.fetchone()["id"]
     db.commit()
-    user_id = cur.lastrowid
     token = create_token(user_id, body.username)
     return {"token": token, "username": body.username}
 
@@ -32,7 +48,9 @@ def register(body: UserRegister):
 @app.post("/api/auth/login", response_model=TokenResponse)
 def login(body: UserLogin):
     db = get_db()
-    row = db.execute("SELECT id, password_hash FROM users WHERE username = ?", (body.username,)).fetchone()
+    cur = db.cursor()
+    cur.execute("SELECT id, password_hash FROM users WHERE username = %s", (body.username,))
+    row = cur.fetchone()
     if not row or not check_password(body.password, row["password_hash"]):
         raise HTTPException(401, "用户名或密码错误")
     token = create_token(row["id"], body.username)
@@ -45,45 +63,48 @@ def login(body: UserLogin):
 def list_weight(request: Request, date_from: str = None, date_to: str = None):
     user = get_current_user(request)
     db = get_db()
+    cur = db.cursor()
     if date_from and date_to:
-        rows = db.execute(
-            "SELECT * FROM weight_records WHERE user_id=? AND date BETWEEN ? AND ? ORDER BY date DESC",
+        cur.execute(
+            "SELECT * FROM weight_records WHERE user_id=%s AND date BETWEEN %s AND %s ORDER BY date DESC",
             (user["user_id"], date_from, date_to),
-        ).fetchall()
+        )
     elif date_from:
-        rows = db.execute(
-            "SELECT * FROM weight_records WHERE user_id=? AND date >= ? ORDER BY date DESC",
+        cur.execute(
+            "SELECT * FROM weight_records WHERE user_id=%s AND date >= %s ORDER BY date DESC",
             (user["user_id"], date_from),
-        ).fetchall()
+        )
     else:
-        rows = db.execute(
-            "SELECT * FROM weight_records WHERE user_id=? ORDER BY date DESC LIMIT 90",
+        cur.execute(
+            "SELECT * FROM weight_records WHERE user_id=%s ORDER BY date DESC LIMIT 90",
             (user["user_id"],),
-        ).fetchall()
-    return [dict(r) for r in rows]
+        )
+    return [_row_to_dict(r) for r in cur.fetchall()]
 
 
 @app.post("/api/weight", response_model=WeightRecordOut)
 def add_weight(request: Request, record: WeightRecord):
     user = get_current_user(request)
     db = get_db()
-    cur = db.execute(
-        "INSERT INTO weight_records (user_id, date, weight_kg, note) VALUES (?, ?, ?, ?)",
+    cur = db.cursor()
+    cur.execute(
+        "INSERT INTO weight_records (user_id, date, weight_kg, note) VALUES (%s, %s, %s, %s) RETURNING *",
         (user["user_id"], record.date, record.weight_kg, record.note),
     )
+    row = cur.fetchone()
     db.commit()
-    row = db.execute("SELECT * FROM weight_records WHERE id = ?", (cur.lastrowid,)).fetchone()
-    return dict(row)
+    return _row_to_dict(row)
 
 
 @app.delete("/api/weight/{record_id}")
 def delete_weight(request: Request, record_id: int):
     user = get_current_user(request)
     db = get_db()
-    row = db.execute("SELECT id FROM weight_records WHERE id=? AND user_id=?", (record_id, user["user_id"])).fetchone()
-    if not row:
+    cur = db.cursor()
+    cur.execute("SELECT id FROM weight_records WHERE id=%s AND user_id=%s", (record_id, user["user_id"]))
+    if not cur.fetchone():
         raise HTTPException(404, "记录不存在")
-    db.execute("DELETE FROM weight_records WHERE id = ?", (record_id,))
+    cur.execute("DELETE FROM weight_records WHERE id = %s", (record_id,))
     db.commit()
     return {"ok": True}
 
@@ -94,40 +115,43 @@ def delete_weight(request: Request, record_id: int):
 def list_diet(request: Request, date: str = None):
     user = get_current_user(request)
     db = get_db()
+    cur = db.cursor()
     if date:
-        rows = db.execute(
-            "SELECT * FROM diet_records WHERE user_id=? AND date = ? ORDER BY created_at DESC",
+        cur.execute(
+            "SELECT * FROM diet_records WHERE user_id=%s AND date = %s ORDER BY created_at DESC",
             (user["user_id"], date),
-        ).fetchall()
+        )
     else:
-        rows = db.execute(
-            "SELECT * FROM diet_records WHERE user_id=? ORDER BY date DESC, created_at DESC LIMIT 100",
+        cur.execute(
+            "SELECT * FROM diet_records WHERE user_id=%s ORDER BY date DESC, created_at DESC LIMIT 100",
             (user["user_id"],),
-        ).fetchall()
-    return [dict(r) for r in rows]
+        )
+    return [_row_to_dict(r) for r in cur.fetchall()]
 
 
 @app.post("/api/diet", response_model=DietRecordOut)
 def add_diet(request: Request, record: DietRecord):
     user = get_current_user(request)
     db = get_db()
-    cur = db.execute(
-        "INSERT INTO diet_records (user_id, date, meal_type, food_name, calories_kcal, note) VALUES (?, ?, ?, ?, ?, ?)",
+    cur = db.cursor()
+    cur.execute(
+        "INSERT INTO diet_records (user_id, date, meal_type, food_name, calories_kcal, note) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
         (user["user_id"], record.date, record.meal_type, record.food_name, record.calories_kcal, record.note),
     )
+    row = cur.fetchone()
     db.commit()
-    row = db.execute("SELECT * FROM diet_records WHERE id = ?", (cur.lastrowid,)).fetchone()
-    return dict(row)
+    return _row_to_dict(row)
 
 
 @app.delete("/api/diet/{record_id}")
 def delete_diet(request: Request, record_id: int):
     user = get_current_user(request)
     db = get_db()
-    row = db.execute("SELECT id FROM diet_records WHERE id=? AND user_id=?", (record_id, user["user_id"])).fetchone()
-    if not row:
+    cur = db.cursor()
+    cur.execute("SELECT id FROM diet_records WHERE id=%s AND user_id=%s", (record_id, user["user_id"]))
+    if not cur.fetchone():
         raise HTTPException(404, "记录不存在")
-    db.execute("DELETE FROM diet_records WHERE id = ?", (record_id,))
+    cur.execute("DELETE FROM diet_records WHERE id = %s", (record_id,))
     db.commit()
     return {"ok": True}
 
@@ -136,11 +160,12 @@ def delete_diet(request: Request, record_id: int):
 def diet_summary(request: Request, date: str):
     user = get_current_user(request)
     db = get_db()
-    row = db.execute(
-        "SELECT COALESCE(SUM(calories_kcal), 0) AS total FROM diet_records WHERE user_id=? AND date = ?",
+    cur = db.cursor()
+    cur.execute(
+        "SELECT COALESCE(SUM(calories_kcal), 0) AS total FROM diet_records WHERE user_id=%s AND date = %s",
         (user["user_id"], date),
-    ).fetchone()
-    return {"date": date, "total_calories": row["total"]}
+    )
+    return {"date": date, "total_calories": cur.fetchone()["total"]}
 
 
 # ==================== Exercise ====================
@@ -149,40 +174,43 @@ def diet_summary(request: Request, date: str):
 def list_exercise(request: Request, date: str = None):
     user = get_current_user(request)
     db = get_db()
+    cur = db.cursor()
     if date:
-        rows = db.execute(
-            "SELECT * FROM exercise_records WHERE user_id=? AND date = ? ORDER BY created_at DESC",
+        cur.execute(
+            "SELECT * FROM exercise_records WHERE user_id=%s AND date = %s ORDER BY created_at DESC",
             (user["user_id"], date),
-        ).fetchall()
+        )
     else:
-        rows = db.execute(
-            "SELECT * FROM exercise_records WHERE user_id=? ORDER BY date DESC, created_at DESC LIMIT 100",
+        cur.execute(
+            "SELECT * FROM exercise_records WHERE user_id=%s ORDER BY date DESC, created_at DESC LIMIT 100",
             (user["user_id"],),
-        ).fetchall()
-    return [dict(r) for r in rows]
+        )
+    return [_row_to_dict(r) for r in cur.fetchall()]
 
 
 @app.post("/api/exercise", response_model=ExerciseRecordOut)
 def add_exercise(request: Request, record: ExerciseRecord):
     user = get_current_user(request)
     db = get_db()
-    cur = db.execute(
-        "INSERT INTO exercise_records (user_id, date, exercise_name, duration_min, calories_burned, note) VALUES (?, ?, ?, ?, ?, ?)",
+    cur = db.cursor()
+    cur.execute(
+        "INSERT INTO exercise_records (user_id, date, exercise_name, duration_min, calories_burned, note) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
         (user["user_id"], record.date, record.exercise_name, record.duration_min, record.calories_burned, record.note),
     )
+    row = cur.fetchone()
     db.commit()
-    row = db.execute("SELECT * FROM exercise_records WHERE id = ?", (cur.lastrowid,)).fetchone()
-    return dict(row)
+    return _row_to_dict(row)
 
 
 @app.delete("/api/exercise/{record_id}")
 def delete_exercise(request: Request, record_id: int):
     user = get_current_user(request)
     db = get_db()
-    row = db.execute("SELECT id FROM exercise_records WHERE id=? AND user_id=?", (record_id, user["user_id"])).fetchone()
-    if not row:
+    cur = db.cursor()
+    cur.execute("SELECT id FROM exercise_records WHERE id=%s AND user_id=%s", (record_id, user["user_id"]))
+    if not cur.fetchone():
         raise HTTPException(404, "记录不存在")
-    db.execute("DELETE FROM exercise_records WHERE id = ?", (record_id,))
+    cur.execute("DELETE FROM exercise_records WHERE id = %s", (record_id,))
     db.commit()
     return {"ok": True}
 
@@ -191,11 +219,12 @@ def delete_exercise(request: Request, record_id: int):
 def exercise_summary(request: Request, date: str):
     user = get_current_user(request)
     db = get_db()
-    row = db.execute(
-        "SELECT COALESCE(SUM(calories_burned), 0) AS total FROM exercise_records WHERE user_id=? AND date = ?",
+    cur = db.cursor()
+    cur.execute(
+        "SELECT COALESCE(SUM(calories_burned), 0) AS total FROM exercise_records WHERE user_id=%s AND date = %s",
         (user["user_id"], date),
-    ).fetchone()
-    return {"date": date, "total_calories_burned": row["total"]}
+    )
+    return {"date": date, "total_calories_burned": cur.fetchone()["total"]}
 
 
 # ==================== Goals ====================
@@ -204,55 +233,61 @@ def exercise_summary(request: Request, date: str):
 def list_goals(request: Request):
     user = get_current_user(request)
     db = get_db()
-    rows = db.execute("SELECT * FROM goals WHERE user_id=? ORDER BY created_at DESC", (user["user_id"],)).fetchall()
-    return [dict(r) for r in rows]
+    cur = db.cursor()
+    cur.execute("SELECT * FROM goals WHERE user_id=%s ORDER BY created_at DESC", (user["user_id"],))
+    return [_row_to_dict(r) for r in cur.fetchall()]
 
 
 @app.post("/api/goals", response_model=GoalOut)
 def create_goal(request: Request, goal: Goal):
     user = get_current_user(request)
     db = get_db()
-    db.execute("UPDATE goals SET is_active = 0 WHERE user_id=?", (user["user_id"],))
-    cur = db.execute(
-        "INSERT INTO goals (user_id, target_weight_kg, start_date, end_date, daily_calorie_target, height_cm) VALUES (?, ?, ?, ?, ?, ?)",
+    cur = db.cursor()
+    cur.execute("UPDATE goals SET is_active = 0 WHERE user_id=%s", (user["user_id"],))
+    cur.execute(
+        "INSERT INTO goals (user_id, target_weight_kg, start_date, end_date, daily_calorie_target, height_cm) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
         (user["user_id"], goal.target_weight_kg, goal.start_date, goal.end_date, goal.daily_calorie_target, goal.height_cm),
     )
+    row = cur.fetchone()
     db.commit()
-    row = db.execute("SELECT * FROM goals WHERE id = ?", (cur.lastrowid,)).fetchone()
-    return dict(row)
+    return _row_to_dict(row)
 
 
 @app.put("/api/goals/{goal_id}", response_model=GoalOut)
 def update_goal(request: Request, goal_id: int, goal: Goal):
     user = get_current_user(request)
     db = get_db()
-    row = db.execute("SELECT id FROM goals WHERE id=? AND user_id=?", (goal_id, user["user_id"])).fetchone()
-    if not row:
+    cur = db.cursor()
+    cur.execute("SELECT id FROM goals WHERE id=%s AND user_id=%s", (goal_id, user["user_id"]))
+    if not cur.fetchone():
         raise HTTPException(404, "目标不存在")
-    db.execute(
-        "UPDATE goals SET target_weight_kg=?, start_date=?, end_date=?, daily_calorie_target=?, height_cm=? WHERE id=?",
+    cur.execute(
+        "UPDATE goals SET target_weight_kg=%s, start_date=%s, end_date=%s, daily_calorie_target=%s, height_cm=%s WHERE id=%s RETURNING *",
         (goal.target_weight_kg, goal.start_date, goal.end_date, goal.daily_calorie_target, goal.height_cm, goal_id),
     )
+    row = cur.fetchone()
     db.commit()
-    row = db.execute("SELECT * FROM goals WHERE id = ?", (goal_id,)).fetchone()
-    return dict(row)
+    return _row_to_dict(row)
 
 
 @app.get("/api/goals/progress")
 def goal_progress(request: Request):
     user = get_current_user(request)
     db = get_db()
-    goal = db.execute(
-        "SELECT * FROM goals WHERE user_id=? AND is_active = 1 ORDER BY created_at DESC LIMIT 1",
+    cur = db.cursor()
+    cur.execute(
+        "SELECT * FROM goals WHERE user_id=%s AND is_active = 1 ORDER BY created_at DESC LIMIT 1",
         (user["user_id"],),
-    ).fetchone()
+    )
+    goal = cur.fetchone()
     if not goal:
         return {"has_goal": False}
 
-    latest = db.execute(
-        "SELECT weight_kg FROM weight_records WHERE user_id=? ORDER BY date DESC LIMIT 1",
+    cur.execute(
+        "SELECT weight_kg FROM weight_records WHERE user_id=%s ORDER BY date DESC LIMIT 1",
         (user["user_id"],),
-    ).fetchone()
+    )
+    latest = cur.fetchone()
 
     current_weight = latest["weight_kg"] if latest else None
     target_weight = goal["target_weight_kg"]
@@ -267,8 +302,8 @@ def goal_progress(request: Request):
         "target_weight_kg": target_weight,
         "current_weight_kg": current_weight,
         "remaining_kg": remaining,
-        "start_date": goal["start_date"],
-        "end_date": goal["end_date"],
+        "start_date": goal["start_date"].isoformat() if hasattr(goal["start_date"], 'isoformat') else goal["start_date"],
+        "end_date": goal["end_date"].isoformat() if hasattr(goal["end_date"], 'isoformat') else goal["end_date"],
         "daily_calorie_target": goal["daily_calorie_target"],
         "height_cm": height_cm,
         "bmi": bmi,
@@ -301,24 +336,31 @@ def overview(request: Request, date: str = None):
     user = get_current_user(request)
     today = date or _dt.date.today().isoformat()
     db = get_db()
+    cur = db.cursor()
 
-    goal = db.execute(
-        "SELECT * FROM goals WHERE user_id=? AND is_active = 1 ORDER BY created_at DESC LIMIT 1",
+    cur.execute(
+        "SELECT * FROM goals WHERE user_id=%s AND is_active = 1 ORDER BY created_at DESC LIMIT 1",
         (user["user_id"],),
-    ).fetchone()
-    latest_weight = db.execute(
-        "SELECT weight_kg FROM weight_records WHERE user_id=? ORDER BY date DESC LIMIT 1",
-        (user["user_id"],),
-    ).fetchone()
+    )
+    goal = cur.fetchone()
 
-    diet = db.execute(
-        "SELECT COALESCE(SUM(calories_kcal), 0) AS total FROM diet_records WHERE user_id=? AND date = ?",
+    cur.execute(
+        "SELECT weight_kg FROM weight_records WHERE user_id=%s ORDER BY date DESC LIMIT 1",
+        (user["user_id"],),
+    )
+    latest_weight = cur.fetchone()
+
+    cur.execute(
+        "SELECT COALESCE(SUM(calories_kcal), 0) AS total FROM diet_records WHERE user_id=%s AND date = %s",
         (user["user_id"], today),
-    ).fetchone()
-    exercise = db.execute(
-        "SELECT COALESCE(SUM(calories_burned), 0) AS total FROM exercise_records WHERE user_id=? AND date = ?",
+    )
+    diet = cur.fetchone()
+
+    cur.execute(
+        "SELECT COALESCE(SUM(calories_burned), 0) AS total FROM exercise_records WHERE user_id=%s AND date = %s",
         (user["user_id"], today),
-    ).fetchone()
+    )
+    exercise = cur.fetchone()
 
     result = {
         "date": today,
@@ -338,7 +380,7 @@ def overview(request: Request, date: str = None):
     return result
 
 
-# ==================== PK (朋友PK) ====================
+# ==================== PK ====================
 
 @app.get("/api/users/search")
 def search_users(request: Request, q: str = ""):
@@ -346,22 +388,24 @@ def search_users(request: Request, q: str = ""):
     if len(q) < 1:
         return []
     db = get_db()
-    rows = db.execute(
-        "SELECT id, username FROM users WHERE username LIKE ? LIMIT 10",
+    cur = db.cursor()
+    cur.execute(
+        "SELECT id, username FROM users WHERE username LIKE %s LIMIT 10",
         (f"%{q}%",),
-    ).fetchall()
-    return [dict(r) for r in rows]
+    )
+    return [_row_to_dict(r) for r in cur.fetchall()]
 
 
 @app.post("/api/pk/create")
 def pk_create(request: Request, body: PKCreate):
     user = get_current_user(request)
     db = get_db()
+    cur = db.cursor()
 
-    # Resolve usernames to user_ids
     member_ids = [user["user_id"]]
     for uname in body.member_usernames:
-        row = db.execute("SELECT id FROM users WHERE username = ?", (uname,)).fetchone()
+        cur.execute("SELECT id FROM users WHERE username = %s", (uname,))
+        row = cur.fetchone()
         if not row:
             raise HTTPException(400, f"用户 '{uname}' 不存在")
         if row["id"] == user["user_id"]:
@@ -370,29 +414,36 @@ def pk_create(request: Request, body: PKCreate):
             raise HTTPException(400, "不能重复添加同一用户")
         member_ids.append(row["id"])
 
-    cur = db.execute("INSERT INTO pk_groups (name, creator_id) VALUES (?, ?)", (body.name, user["user_id"]))
-    gid = cur.lastrowid
+    cur.execute(
+        "INSERT INTO pk_groups (name, creator_id) VALUES (%s, %s) RETURNING id",
+        (body.name, user["user_id"]),
+    )
+    gid = cur.fetchone()["id"]
     for mid in member_ids:
-        db.execute("INSERT INTO pk_members (group_id, user_id) VALUES (?, ?)", (gid, mid))
+        cur.execute("INSERT INTO pk_members (group_id, user_id) VALUES (%s, %s)", (gid, mid))
     db.commit()
     return {"ok": True, "group_id": gid}
 
 
 def _get_member_progress(db, user_id: int) -> PKMemberInfo:
-    """Compute PK progress for a single user."""
-    urow = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
-    goal = db.execute(
-        "SELECT * FROM goals WHERE user_id=? AND is_active=1 ORDER BY created_at DESC LIMIT 1",
+    cur = db.cursor()
+    cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
+    urow = cur.fetchone()
+    cur.execute(
+        "SELECT * FROM goals WHERE user_id=%s AND is_active=1 ORDER BY created_at DESC LIMIT 1",
         (user_id,),
-    ).fetchone()
-    latest = db.execute(
-        "SELECT weight_kg FROM weight_records WHERE user_id=? ORDER BY date DESC LIMIT 1",
+    )
+    goal = cur.fetchone()
+    cur.execute(
+        "SELECT weight_kg FROM weight_records WHERE user_id=%s ORDER BY date DESC LIMIT 1",
         (user_id,),
-    ).fetchone()
-    earliest = db.execute(
-        "SELECT weight_kg FROM weight_records WHERE user_id=? ORDER BY date ASC LIMIT 1",
+    )
+    latest = cur.fetchone()
+    cur.execute(
+        "SELECT weight_kg FROM weight_records WHERE user_id=%s ORDER BY date ASC LIMIT 1",
         (user_id,),
-    ).fetchone()
+    )
+    earliest = cur.fetchone()
 
     info = PKMemberInfo(
         user_id=user_id,
@@ -407,8 +458,7 @@ def _get_member_progress(db, user_id: int) -> PKMemberInfo:
         lost_so_far = earliest["weight_kg"] - latest["weight_kg"]
         info.total_lost_kg = round(lost_so_far, 1)
         if total_to_lose > 0:
-            pct = min(100, max(0, round(lost_so_far / total_to_lose * 100, 1)))
-            info.progress_pct = pct
+            info.progress_pct = min(100, max(0, round(lost_so_far / total_to_lose * 100, 1)))
         elif lost_so_far >= total_to_lose:
             info.progress_pct = 100
     elif latest and earliest:
@@ -421,23 +471,24 @@ def _get_member_progress(db, user_id: int) -> PKMemberInfo:
 def pk_list_groups(request: Request):
     user = get_current_user(request)
     db = get_db()
-    rows = db.execute(
+    cur = db.cursor()
+    cur.execute(
         "SELECT g.id, g.name, g.creator_id, g.created_at FROM pk_groups g "
-        "JOIN pk_members m ON g.id = m.group_id WHERE m.user_id = ? ORDER BY g.created_at DESC",
+        "JOIN pk_members m ON g.id = m.group_id WHERE m.user_id = %s ORDER BY g.created_at DESC",
         (user["user_id"],),
-    ).fetchall()
+    )
+    rows = cur.fetchall()
 
     result = []
     for g in rows:
-        members = db.execute(
-            "SELECT user_id FROM pk_members WHERE group_id = ?", (g["id"],)
-        ).fetchall()
+        cur.execute("SELECT user_id FROM pk_members WHERE group_id = %s", (g["id"],))
+        members = cur.fetchall()
         member_infos = [_get_member_progress(db, m["user_id"]) for m in members]
         result.append({
             "id": g["id"],
             "name": g["name"],
             "creator_id": g["creator_id"],
-            "created_at": g["created_at"],
+            "created_at": g["created_at"].isoformat() if hasattr(g["created_at"], 'isoformat') else str(g["created_at"]),
             "members": [m.model_dump() for m in member_infos],
         })
     return result
@@ -447,11 +498,11 @@ def pk_list_groups(request: Request):
 def pk_leave(request: Request, group_id: int):
     user = get_current_user(request)
     db = get_db()
-    db.execute("DELETE FROM pk_members WHERE group_id=? AND user_id=?", (group_id, user["user_id"]))
-    # Remove group if empty
-    remaining = db.execute("SELECT COUNT(*) as c FROM pk_members WHERE group_id=?", (group_id,)).fetchone()
-    if remaining["c"] == 0:
-        db.execute("DELETE FROM pk_groups WHERE id=?", (group_id,))
+    cur = db.cursor()
+    cur.execute("DELETE FROM pk_members WHERE group_id=%s AND user_id=%s", (group_id, user["user_id"]))
+    cur.execute("SELECT COUNT(*) as c FROM pk_members WHERE group_id=%s", (group_id,))
+    if cur.fetchone()["c"] == 0:
+        cur.execute("DELETE FROM pk_groups WHERE id=%s", (group_id,))
     db.commit()
     return {"ok": True}
 
@@ -460,21 +511,21 @@ def pk_leave(request: Request, group_id: int):
 def pk_detail(request: Request, group_id: int):
     user = get_current_user(request)
     db = get_db()
-    # Verify membership
-    mem = db.execute(
-        "SELECT 1 FROM pk_members WHERE group_id=? AND user_id=?", (group_id, user["user_id"])
-    ).fetchone()
-    if not mem:
+    cur = db.cursor()
+    cur.execute("SELECT 1 FROM pk_members WHERE group_id=%s AND user_id=%s", (group_id, user["user_id"]))
+    if not cur.fetchone():
         raise HTTPException(403, "你不在此PK组中")
 
-    g = db.execute("SELECT * FROM pk_groups WHERE id=?", (group_id,)).fetchone()
-    members = db.execute("SELECT user_id FROM pk_members WHERE group_id=?", (group_id,)).fetchall()
+    cur.execute("SELECT * FROM pk_groups WHERE id=%s", (group_id,))
+    g = cur.fetchone()
+    cur.execute("SELECT user_id FROM pk_members WHERE group_id=%s", (group_id,))
+    members = cur.fetchall()
     member_infos = [_get_member_progress(db, m["user_id"]) for m in members]
     return {
         "id": g["id"],
         "name": g["name"],
         "creator_id": g["creator_id"],
-        "created_at": g["created_at"],
+        "created_at": g["created_at"].isoformat() if hasattr(g["created_at"], 'isoformat') else str(g["created_at"]),
         "members": [m.model_dump() for m in member_infos],
     }
 
@@ -483,9 +534,12 @@ def pk_detail(request: Request, group_id: int):
 
 @app.on_event("startup")
 def startup():
+    if not __import__('os').environ.get("DATABASE_URL"):
+        print("WARNING: DATABASE_URL not set, skipping DB init")
+        return
     init_db()
 
 
-import os
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+import os as _os
+STATIC_DIR = _os.path.join(_os.path.dirname(__file__), "static")
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
