@@ -77,7 +77,7 @@ class GoalOut(Goal):
 # ---- PK ----
 class PKCreate(BaseModel):
     name: str = "减肥PK"
-    member_usernames: List[str] = Field(min_length=1, max_length=3)
+    member_usernames: List[str] = Field(min_length=1, max_length=10)
 
 
 class PKMemberInfo(BaseModel):
