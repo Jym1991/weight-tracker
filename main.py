@@ -17,16 +17,22 @@ app = FastAPI(title="减肥体重管理系统")
 
 @app.post("/api/auth/register", response_model=TokenResponse)
 def register(body: UserRegister):
-    db = get_db()
-    existing = db.execute("SELECT id FROM users WHERE username = ?", (body.username,)).fetchone()
-    if existing:
-        raise HTTPException(400, "用户名已存在")
-    pw_hash = hash_password(body.password)
-    cur = db.execute(
-        "INSERT INTO users (username, password_hash) VALUES (?, ?)", (body.username, pw_hash))
-    db.commit()
-    token = create_token(cur.lastrowid, body.username)
-    return {"token": token, "username": body.username}
+    try:
+        db = get_db()
+        existing = db.execute("SELECT id FROM users WHERE username = ?", (body.username,)).fetchone()
+        if existing:
+            raise HTTPException(400, "用户名已存在")
+        pw_hash = hash_password(body.password)
+        cur = db.execute(
+            "INSERT INTO users (username, password_hash) VALUES (?, ?)", (body.username, pw_hash))
+        db.commit()
+        token = create_token(cur.lastrowid, body.username)
+        return {"token": token, "username": body.username}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(500, f"ERR: {type(e).__name__}: {str(e)}")
 
 
 @app.post("/api/auth/login", response_model=TokenResponse)
@@ -380,6 +386,11 @@ def pk_detail(request: Request, group_id: int):
     infos = [_mp(db, m["user_id"]) for m in ms]
     return {"id": g["id"], "name": g["name"], "creator_id": g["creator_id"],
             "created_at": g["created_at"], "members": [m.model_dump() for m in infos]}
+
+
+@app.get("/api/ping")
+def ping():
+    return {"ok": True}
 
 
 # ==================== Startup ====================
