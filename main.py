@@ -382,115 +382,13 @@ def pk_detail(request: Request, group_id: int):
             "created_at": g["created_at"], "members": [m.model_dump() for m in infos]}
 
 
-# ==================== Backup ====================
-
-import json as _json
-import os as _os_backup
-
-BACKUP_FILE = _os_backup.path.join(_os_backup.path.dirname(__file__), "backup.json")
-
-
-@app.get("/api/backup/export")
-def backup_export(request: Request):
-    """导出所有数据为JSON，用户下载后保存"""
-    user = get_current_user(request)
-    db = get_db()
-    uid = user["user_id"]
-
-    tables = ["weight_records", "diet_records", "exercise_records", "goals"]
-    data = {"user_id": uid, "username": user["username"]}
-    for tbl in tables:
-        rows = db.execute(f"SELECT * FROM {tbl} WHERE user_id=?", (uid,)).fetchall()
-        data[tbl] = [dict(r) for r in rows]
-
-    # Also export PK memberships for this user
-    pk_rows = db.execute(
-        "SELECT g.name, g.creator_id, g.created_at, m.group_id FROM pk_groups g "
-        "JOIN pk_members m ON g.id=m.group_id WHERE m.user_id=?", (uid,)
-    ).fetchall()
-    data["pk_groups"] = [dict(r) for r in pk_rows]
-
-    return data
-
-
-@app.post("/api/backup/import")
-async def backup_import(request: Request):
-    """导入JSON备份数据"""
-    user = get_current_user(request)
-    db = get_db()
-    uid = user["user_id"]
-
-    # Read JSON body manually
-    import json as _json2
-    raw = await request.body()
-    body = _json2.loads(raw)
-
-    count = {"weight_records": 0, "diet_records": 0, "exercise_records": 0, "goals": 0}
-
-    for tbl in ["goals", "weight_records", "diet_records", "exercise_records"]:
-        if tbl not in body:
-            continue
-        for row in body[tbl]:
-            row = dict(row)
-            # Remove id and created_at, let DB generate new ones
-            row.pop("id", None)
-            row.pop("created_at", None)
-            row["user_id"] = uid
-            cols = ", ".join(row.keys())
-            placeholders = ", ".join("?" for _ in row)
-            try:
-                db.execute(f"INSERT OR IGNORE INTO {tbl} ({cols}) VALUES ({placeholders})", tuple(row.values()))
-                count[tbl] += 1
-            except Exception:
-                pass
-        db.commit()
-
-    return {"ok": True, "imported": count}
-
-
-@app.post("/api/backup/save")
-def backup_save(request: Request):
-    """Auto-save: 将全量数据保存到 Render 持久化备份文件"""
-    get_current_user(request)
-    db = get_db()
-
-    tables = ["users", "weight_records", "diet_records", "exercise_records", "goals", "pk_groups", "pk_members"]
-    data = {}
-    for tbl in tables:
-        rows = db.execute(f"SELECT * FROM {tbl}").fetchall()
-        data[tbl] = [dict(r) for r in rows]
-
-    with open(BACKUP_FILE, "w", encoding="utf-8") as f:
-        _json.dump(data, f, ensure_ascii=False, default=str)
-    return {"ok": True, "tables": {t: len(data[t]) for t in tables}}
-
-
 # ==================== Startup ====================
 
 @app.on_event("startup")
 def startup():
     init_db()
-    if _os_backup.path.exists(BACKUP_FILE):
-        try:
-            with open(BACKUP_FILE, encoding="utf-8") as f:
-                backup = _json.load(f)
-            db2 = get_db()
-            tables = ["users", "weight_records", "diet_records", "exercise_records", "goals", "pk_groups", "pk_members"]
-            for tbl in tables:
-                if tbl in backup:
-                    for row in backup[tbl]:
-                        row = dict(row)
-                        cols = ", ".join(row.keys())
-                        ph = ", ".join("?" for _ in row)
-                        try:
-                            db2.execute(f"INSERT OR IGNORE INTO {tbl} ({cols}) VALUES ({ph})", tuple(row.values()))
-                        except Exception:
-                            pass
-            db2.commit()
-            print(f"Backup restored from {BACKUP_FILE}")
-        except Exception as e:
-            print(f"Backup restore failed: {e}")
 
 
-STATIC_DIR = _os_backup.path.join(_os_backup.path.dirname(__file__), "static")
+import os
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
