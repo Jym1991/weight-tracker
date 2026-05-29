@@ -259,7 +259,7 @@ button { touch-action: manipulation; }
   <!-- PK Form -->
   <div class="form-box" id="formPK">
     <h3>发起减肥PK</h3>
-    <p style="font-size:12px;color:#999;margin-bottom:12px;">搜索并选择 1~3 位好友一起PK减肥进度</p>
+    <p style="font-size:12px;color:#999;margin-bottom:12px;">搜索并选择 1~10 位好友一起PK减肥进度</p>
     <div class="form-row">
       <div class="form-group" style="flex:1;min-width:200px;position:relative;">
         <label>PK名称</label>
@@ -784,7 +784,7 @@ async function searchPKUsers() {
 }
 
 function selectPKUser(username) {
-  if (pkSelectedUsers.length >= 3) { alert('最多选择3位好友'); return; }
+  if (pkSelectedUsers.length >= 10) { alert('最多选择10位好友'); return; }
   if (pkSelectedUsers.find(s => s.username === username)) return;
   pkSelectedUsers.push({ username });
   renderPKChips();
@@ -806,7 +806,7 @@ function renderPKChips() {
 async function createPK() {
   const name = document.getElementById('pkName').value.trim() || '减肥PK';
   if (pkSelectedUsers.length === 0) { document.getElementById('pkMsg').innerHTML = '<span style="color:#f5222d;">请至少选择1位好友</span>'; return; }
-  if (pkSelectedUsers.length > 3) { document.getElementById('pkMsg').innerHTML = '<span style="color:#f5222d;">最多选择3位好友</span>'; return; }
+  if (pkSelectedUsers.length > 10) { document.getElementById('pkMsg').innerHTML = '<span style="color:#f5222d;">最多选择10位好友</span>'; return; }
 
   const res = await api('/api/pk/create', {
     method: 'POST',
