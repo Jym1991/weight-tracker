@@ -183,7 +183,10 @@ button { touch-action: manipulation; }
       <button type="button" id="btnUnitKg" onclick="setDisplayUnit('kg')">kg</button>
     </div>
     <span class="user-tag" id="userTag"></span>
-    <button class="btn-logout" onclick="logout()">退出</button>
+    <button type="button" class="btn-logout" onclick="exportBackup()">备份</button>
+    <button type="button" class="btn-logout" onclick="document.getElementById('importFile').click()">恢复</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importBackup(this)">
+    <button type="button" class="btn-logout" onclick="logout()">退出</button>
   </div>
 </div>
 
@@ -886,11 +889,60 @@ document.addEventListener('click', function(e) {
   }
 });
 
+// ==================== Backup ====================
+
+async function exportBackup() {
+  const res = await api('/api/backup/export');
+  const data = await res.json();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `weight-tracker-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  alert('备份已下载！更新代码后，用「恢复」按钮导入此文件即可。');
+}
+
+function importBackup(input) {
+  if (!confirm('导入备份会覆盖当前数据，确定继续？')) { input.value = ''; return; }
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      const res = await api('/api/backup/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const result = await res.json();
+      if (result.ok) {
+        alert('数据恢复成功！体重' + (result.imported.weight_records||0) + '条，饮食' + (result.imported.diet_records||0) + '条');
+        refreshAll();
+      } else {
+        alert('恢复失败: ' + JSON.stringify(result));
+      }
+    } catch(err) {
+      alert('文件格式错误: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// Auto-save backup after data changes
+async function autoSaveBackup() {
+  try { await api('/api/backup/save', { method: 'POST' }); } catch(e) {}
+}
+
 // ==================== Refresh ====================
 function refreshAll() {
   loadDashboard();
   loadChart();
   loadHistory();
+  autoSaveBackup();
 }
 </script>
 </body>
