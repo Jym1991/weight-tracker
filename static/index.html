@@ -303,8 +303,12 @@ function api(path, options = {}) {
     headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(options.body);
   }
-  return fetch(path, { ...options, headers }).then(r => {
+  return fetch(path, { ...options, headers }).then(async r => {
     if (r.status === 401) { logout(); throw new Error('unauthorized'); }
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || `请求失败 (${r.status})`);
+    }
     return r;
   });
 }
@@ -646,13 +650,15 @@ async function addWeight() {
 
   if (!date || isNaN(weight_kg)) return alert('请填写日期和体重（支持：145斤 / 72.5kg / 72.5）');
 
-  await api('/api/weight', {
-    method: 'POST',
-    body: { date, weight_kg: Math.round(weight_kg * 100) / 100, note },
-  });
-  document.getElementById('wWeight').value = '';
-  document.getElementById('wNote').value = '';
-  refreshAll();
+  try {
+    await api('/api/weight', {
+      method: 'POST',
+      body: { date, weight_kg: Math.round(weight_kg * 100) / 100, note },
+    });
+    document.getElementById('wWeight').value = '';
+    document.getElementById('wNote').value = '';
+    refreshAll();
+  } catch(e) { alert('保存失败: ' + e.message); }
 }
 
 async function addDiet() {
@@ -663,14 +669,16 @@ async function addDiet() {
   const note = document.getElementById('dNote').value;
   if (!date || !food_name || isNaN(calories_kcal)) return alert('请填写日期、食物和热量');
 
-  await api('/api/diet', {
-    method: 'POST',
-    body: { date, meal_type, food_name, calories_kcal, note },
-  });
-  document.getElementById('dFood').value = '';
-  document.getElementById('dCal').value = '';
-  document.getElementById('dNote').value = '';
-  refreshAll();
+  try {
+    await api('/api/diet', {
+      method: 'POST',
+      body: { date, meal_type, food_name, calories_kcal, note },
+    });
+    document.getElementById('dFood').value = '';
+    document.getElementById('dCal').value = '';
+    document.getElementById('dNote').value = '';
+    refreshAll();
+  } catch(e) { alert('保存失败: ' + e.message); }
 }
 
 async function addExercise() {
@@ -681,15 +689,17 @@ async function addExercise() {
   const note = document.getElementById('eNote').value;
   if (!date || !exercise_name || isNaN(duration_min) || isNaN(calories_burned)) return alert('请填写完整信息');
 
-  await api('/api/exercise', {
-    method: 'POST',
-    body: { date, exercise_name, duration_min, calories_burned, note },
-  });
-  document.getElementById('eName').value = '';
-  document.getElementById('eDuration').value = '';
-  document.getElementById('eCal').value = '';
-  document.getElementById('eNote').value = '';
-  refreshAll();
+  try {
+    await api('/api/exercise', {
+      method: 'POST',
+      body: { date, exercise_name, duration_min, calories_burned, note },
+    });
+    document.getElementById('eName').value = '';
+    document.getElementById('eDuration').value = '';
+    document.getElementById('eCal').value = '';
+    document.getElementById('eNote').value = '';
+    refreshAll();
+  } catch(e) { alert('保存失败: ' + e.message); }
 }
 
 async function deleteItem(type, id) {
@@ -709,16 +719,18 @@ async function saveGoal() {
 
   if (isNaN(target_weight_kg) || !start_date || !end_date) return alert('请填写目标体重和日期范围');
 
-  await api('/api/goals', {
-    method: 'POST',
-    body: { target_weight_kg: Math.round(target_weight_kg * 100) / 100, height_cm, start_date, end_date, daily_calorie_target },
-  });
-  document.getElementById('goalWeight').value = '';
-  document.getElementById('goalHeight').value = '';
-  document.getElementById('goalStart').value = '';
-  document.getElementById('goalEnd').value = '';
-  document.getElementById('goalDailyCal').value = '';
-  refreshAll();
+  try {
+    await api('/api/goals', {
+      method: 'POST',
+      body: { target_weight_kg: Math.round(target_weight_kg * 100) / 100, height_cm, start_date, end_date, daily_calorie_target },
+    });
+    document.getElementById('goalWeight').value = '';
+    document.getElementById('goalHeight').value = '';
+    document.getElementById('goalStart').value = '';
+    document.getElementById('goalEnd').value = '';
+    document.getElementById('goalDailyCal').value = '';
+    refreshAll();
+  } catch(e) { alert('保存失败: ' + e.message); }
 }
 
 // ==================== History ====================
