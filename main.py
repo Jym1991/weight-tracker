@@ -400,30 +400,6 @@ def backup_download(request: Request):
     return data
 
 
-@app.post("/api/backup")
-async def backup_upload(request: Request):
-    """导入备份数据"""
-    user = get_current_user(request)
-    db = get_db()
-    uid = user["user_id"]
-    body = await request.json()
-    count = 0
-    for tbl in ["goals", "weight_records", "diet_records", "exercise_records"]:
-        for row in body.get(tbl, []):
-            r = dict(row)
-            r.pop("id", None); r.pop("created_at", None)
-            r["user_id"] = uid
-            keys = list(r.keys())
-            ph = ",".join("?" for _ in keys)
-            try:
-                db.execute(f"INSERT OR IGNORE INTO {tbl} ({','.join(keys)}) VALUES ({ph})", tuple(r.values()))
-                count += 1
-            except Exception:
-                pass
-    db.commit()
-    return {"ok": True, "count": count}
-
-
 # ==================== Startup ====================
 
 @app.on_event("startup")
