@@ -2,14 +2,17 @@ import sqlite3
 import os
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "weight_tracker.db")
+_conn = None
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=DELETE")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    global _conn
+    if _conn is None:
+        _conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+        _conn.row_factory = sqlite3.Row
+        _conn.execute("PRAGMA journal_mode=DELETE")
+        _conn.execute("PRAGMA foreign_keys=ON")
+    return _conn
 
 
 def init_db():
@@ -87,4 +90,3 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_pk_members_user ON pk_members(user_id);
     """)
     conn.commit()
-    conn.close()
