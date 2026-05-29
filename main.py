@@ -22,11 +22,14 @@ def register(body: UserRegister):
     if existing:
         raise HTTPException(400, "用户名已存在")
     pw_hash = hash_password(body.password)
-    cur = db.execute(
-        "INSERT INTO users (username, password_hash) VALUES (?, ?)", (body.username, pw_hash))
-    db.commit()
-    token = create_token(cur.lastrowid, body.username)
-    return {"token": token, "username": body.username}
+    try:
+        cur = db.execute(
+            "INSERT INTO users (username, password_hash) VALUES (?, ?)", (body.username, pw_hash))
+        db.commit()
+        token = create_token(cur.lastrowid, body.username)
+        return {"token": token, "username": body.username}
+    except Exception as e:
+        raise HTTPException(500, f"DB Write Error: {str(e)}")
 
 
 @app.post("/api/auth/login", response_model=TokenResponse)
